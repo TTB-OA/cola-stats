@@ -38,13 +38,10 @@ SELECT
     d.agency_id,
     d.comment_start_date,
     d.comment_end_date,
-    d.within_comment_period,
-    d.open_for_comment,
     d.cfr_part,
     d.fr_doc_num,
     d.fr_vol_num,
-    d.start_end_page,
-    d.abstract as document_abstract
+    d.start_end_page
   FROM comments c
   LEFT JOIN documents d ON c.document_id = d.document_id
 """

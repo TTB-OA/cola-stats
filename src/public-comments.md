@@ -34,6 +34,59 @@ const searchInput = Inputs.text({
 const searchTerm = Generators.input(searchInput);
 ```
 
+```js
+// Interactive filtering state management
+const filterState = {
+  selectedDocuments: new Set(),
+  selectedAgencies: new Set(),
+  selectedAgencyTypes: new Set(),
+  selectedCountries: new Set()
+};
+
+// Function to update filters
+function updateFilter(type, value) {
+  const set = filterState[type];
+  if (set.has(value)) {
+    set.delete(value);
+  } else {
+    set.add(value);
+  }
+  // Trigger re-computation by updating a reactive cell
+  filterTrigger.value = Date.now();
+}
+
+// Create a reactive trigger for filter updates
+const filterTrigger = Inputs.input(0);
+const filterUpdate = Generators.input(filterTrigger);
+
+// Function to get active filters display
+function getActiveFiltersDisplay() {
+  const filters = [];
+  if (filterState.selectedDocuments.size > 0) {
+    filters.push(`Documents: ${Array.from(filterState.selectedDocuments).join(', ')}`);
+  }
+  if (filterState.selectedAgencies.size > 0) {
+    filters.push(`Agencies: ${Array.from(filterState.selectedAgencies).join(', ')}`);
+  }
+  if (filterState.selectedAgencyTypes.size > 0) {
+    filters.push(`Agency Types: ${Array.from(filterState.selectedAgencyTypes).join(', ')}`);
+  }
+  if (filterState.selectedCountries.size > 0) {
+    filters.push(`Countries: ${Array.from(filterState.selectedCountries).join(', ')}`);
+  }
+  return filters.length > 0 ? filters.join(' | ') : 'No filters applied';
+}
+
+// Function to clear all filters
+function clearAllFilters() {
+  filterState.selectedDocuments.clear();
+  filterState.selectedAgencies.clear();
+  filterState.selectedAgencyTypes.clear();
+  filterState.selectedCountries.clear();
+  filterTrigger.value = Date.now();
+}
+```
+
 <div style="margin-bottom: 1rem;">
   ${searchInput}
 </div>
@@ -404,7 +457,7 @@ randomSample.forEach((comment, index) => {
                 <strong>Source ${i + 1}:</strong> ${source.source || 'Unknown'}
               </div>
               <div style="font-size: 0.85em; line-height: 1.4; word-wrap: break-word; white-space: pre-wrap;">
-                ${source.text ? source.text.replace(/<[^>]*>/g, ' ') : 'No text available'}
+                ${source.text ? decodeHtmlEntities(source.text.replace(/<[^>]*>/g, ' ')) : 'No text available'}
               </div>
             </div>
           `) :

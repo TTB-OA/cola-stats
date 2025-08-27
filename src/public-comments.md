@@ -13,14 +13,20 @@ const comments = await comments_file;
 // Get file metadata for display with error handling
 const commentsFile = FileAttachment("./data/public_comments.json");
 const fileSize = commentsFile.size ? (commentsFile.size / 1024).toFixed(1) : "Unknown"; // Convert to KB
-const lastModified = commentsFile.lastModified ? new Date(commentsFile.lastModified) : null;
+const lastModified = comments && comments.length > 0
+  ? new Date(Math.max(...comments
+      .map(d => d.comment_details_download_date)
+      .filter(d => d)
+      .map(d => new Date(d))))
+  : null;
 const href = commentsFile.href;
 const downloadName = "public_comments_" + lastModified.toISOString().replace(/[:.]/g, "-") + ".json";
 ```
 
 <div style="margin-bottom: 1rem;">
   <small style="color: #666; font-size: 0.75em;">
-    Data as of ${lastModified.toLocaleString()} | <a href="./data/public_comments.json" download="public_comments.json" style="color: #0066cc;">Download raw data</a>
+    Data as of ${lastModified.toLocaleString()} | 
+    <a href="./data/public_comments.json" download="public_comments.json" style="color: #0066cc;">Download raw unfiltered data</a>
   </small>
 </div>
 
@@ -32,6 +38,59 @@ const searchInput = Inputs.text({
 });
 
 const searchTerm = Generators.input(searchInput);
+```
+
+```js
+// Interactive filtering state management
+const filterState = {
+  selectedDocuments: new Set(),
+  selectedAgencies: new Set(),
+  selectedAgencyTypes: new Set(),
+  selectedCountries: new Set()
+};
+
+// Function to update filters
+function updateFilter(type, value) {
+  const set = filterState[type];
+  if (set.has(value)) {
+    set.delete(value);
+  } else {
+    set.add(value);
+  }
+  // Trigger re-computation by updating a reactive cell
+  filterTrigger.value = Date.now();
+}
+
+// Create a reactive trigger for filter updates
+const filterTrigger = Inputs.input(0);
+const filterUpdate = Generators.input(filterTrigger);
+
+// Function to get active filters display
+function getActiveFiltersDisplay() {
+  const filters = [];
+  if (filterState.selectedDocuments.size > 0) {
+    filters.push(`Documents: ${Array.from(filterState.selectedDocuments).join(', ')}`);
+  }
+  if (filterState.selectedAgencies.size > 0) {
+    filters.push(`Agencies: ${Array.from(filterState.selectedAgencies).join(', ')}`);
+  }
+  if (filterState.selectedAgencyTypes.size > 0) {
+    filters.push(`Agency Types: ${Array.from(filterState.selectedAgencyTypes).join(', ')}`);
+  }
+  if (filterState.selectedCountries.size > 0) {
+    filters.push(`Countries: ${Array.from(filterState.selectedCountries).join(', ')}`);
+  }
+  return filters.length > 0 ? filters.join(' | ') : 'No filters applied';
+}
+
+// Function to clear all filters
+function clearAllFilters() {
+  filterState.selectedDocuments.clear();
+  filterState.selectedAgencies.clear();
+  filterState.selectedAgencyTypes.clear();
+  filterState.selectedCountries.clear();
+  filterTrigger.value = Date.now();
+}
 ```
 
 ```js
@@ -103,6 +162,32 @@ const filteredComments = searchTerm ?
     (d.country && d.country.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (d.comment_text && d.comment_text.toLowerCase().includes(searchTerm.toLowerCase()))
   ) : comments;
+```
+
+```js
+// Function to download filtered data
+function downloadFilteredData() {
+  const dataToDownload = filteredComments;
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const filename = `filtered_comments_${timestamp}.json`;
+  
+  const dataStr = JSON.stringify(dataToDownload, null, 2);
+  const dataBlob = new Blob([dataStr], {type: 'application/json'});
+  const url = URL.createObjectURL(dataBlob);
+  
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// Create download button
+const downloadButton = Inputs.button("Download filtered data", {
+  reduce: () => downloadFilteredData()
+});
 ```
 
 
@@ -362,32 +447,6 @@ display(Inputs.table(countrySummary, {
 }));
 ```
 
-  <!-- comment_text text // from 'comment' in API response
-  comment_tracking_nbr varchar // from 'trackingNbr' in API response
-  comment_category varchar // from 'category' in API response
-  comment_subtype varchar // from 'subtype' in API response
-  duplicate_comments int // from 'duplicateComments' in API response
-  address1 varchar // from 'address1' in API response
-  address2 varchar // from 'address2' in API response
-  city varchar // from 'city' in API response
-  state_province_region varchar // from 'stateProvinceRegion' in API response
-  zip varchar // from 'zip' in API response
-  country varchar // from 'country' in API response
-  email varchar // from 'email' in API response
-  first_name varchar // from 'firstName' in API response
-  last_name varchar // from 'lastName' in API response
-  phone varchar // from 'phone' in API response
-  gov_agency varchar // from 'govAgency' in API response
-  gov_agency_type varchar // from 'govAgencyType' in API response
-  comment_postmark_date datetime // from 'postmarkDate' in API response
-  comment_receive_date datetime // from 'receiveDate' in API response
-  comment_attachment_count int // derived as the length of the 'included' array in the API response with 'type' = 'attachments'
-  comment_details_download_date datetime [note: 'System date when the comment details were downloaded'] -->
-
-
-```js
-```
-
 ```js
 // Display 5 random comment samples with text focus
 const randomSample = filteredComments.length > 0 ? 
@@ -436,6 +495,27 @@ function decodeHtmlEntities(text) {
   return decoded;
 }
 
+// Function to highlight search terms in text
+function highlightSearchTerms(text, searchTerm) {
+  if (!text || !searchTerm) return text;
+  
+  // Escape special regex characters in search term
+  const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  
+  // Create regex for case-insensitive matching
+  const regex = new RegExp(`(${escapedTerm})`, 'gi');
+  
+  // Split text by search term but keep the delimiters
+  const parts = text.split(regex);
+  
+  // Return HTML template with highlighted parts
+  return html`${parts.map((part, i) => 
+    regex.test(part) && part.toLowerCase() === searchTerm.toLowerCase() 
+      ? html`<mark style="background-color: #ffeb3b; padding: 1px 2px; border-radius: 2px;">${part}</mark>`
+      : part
+  )}`;
+}
+
 // Display sample comments with focus on text content
 randomSample.forEach((comment, index) => {
   const contentSources = comment.comment_text_sources || [];
@@ -443,9 +523,9 @@ randomSample.forEach((comment, index) => {
   display(html`
     <div style="border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 5px;">
       <h5 style="margin-top: 0; color: #2563eb;">Sample Comment ${index + 1}</h5>
-      <p><strong>Document:</strong> ${comment.document_title || 'Unknown'}</p>
-      <p><strong>Country:</strong> ${comment.country || 'Unknown'} | 
-         <strong>Agency:</strong> ${comment.gov_agency || 'N/A'} | 
+      <p><strong>Document:</strong> ${highlightSearchTerms(comment.document_title || 'Unknown', searchTerm)}</p>
+      <p><strong>Country:</strong> ${highlightSearchTerms(comment.country || 'Unknown', searchTerm)} | 
+         <strong>Agency:</strong> ${highlightSearchTerms(comment.gov_agency || 'N/A', searchTerm)} | 
          <strong>Attachments:</strong> ${comment.attachment_count || 0}</p>
       
       <div style="margin-top: 10px;">
@@ -454,10 +534,18 @@ randomSample.forEach((comment, index) => {
           contentSources.map((source, i) => html`
             <div style="margin: 8px 0; padding: 8px; border-radius: 3px; border-left: 3px solid #2563eb;">
               <div style="font-size: 0.75em; color: #666; margin-bottom: 5px;">
-                <strong>Source ${i + 1}:</strong> ${source.source || 'Unknown'}
+                <strong>Source ${i + 1}:</strong> ${(() => {
+                  const sourceText = source.source || 'Unknown';
+                  // Check if source appears to be a URL (starts with http)
+                  if (sourceText.startsWith('http')) {
+                    return html`<a href="${sourceText}" target="_blank" rel="noopener noreferrer" style="color: #0066cc; text-decoration: underline;">${sourceText}</a>`;
+                  } else {
+                    return sourceText;
+                  }
+                })()}
               </div>
               <div style="font-size: 0.85em; line-height: 1.4; word-wrap: break-word; white-space: pre-wrap;">
-                ${source.text ? decodeHtmlEntities(source.text.replace(/<[^>]*>/g, ' ')) : 'No text available'}
+                ${source.text ? highlightSearchTerms(decodeHtmlEntities(source.text.replace(/<[^>]*>/g, ' ')), searchTerm) : 'No text available'}
               </div>
             </div>
           `) :
@@ -466,13 +554,14 @@ randomSample.forEach((comment, index) => {
       </div>
     </div>
   `);
-  
-  // Display the full JSON record
-  display(comment);
 });
 ```
+---
 
 ```js
-display(html`<h4>All Comments Data ${searchTerm ? `(filtered: ${filteredComments.length} of ${comments.length})` : `(${comments.length} total)`}</h4>`);
+display(html`<h4>Comments Data ${searchTerm ? `(filtered: ${filteredComments.length} of ${comments.length})` : `(${comments.length} total)`}</h4>`);
 display(filteredComments);
 ```
+<div>
+    ${downloadButton}
+</div>

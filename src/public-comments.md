@@ -94,74 +94,157 @@ function clearAllFilters() {
 ```
 
 ```js
-// Interactive filtering state management
-const filterState = {
-  selectedDocuments: new Set(),
-  selectedAgencies: new Set(),
-  selectedAgencyTypes: new Set(),
-  selectedCountries: new Set()
-};
+// Get unique values for filter dropdowns  
+const uniqueDockets = [...new Set(comments.map(d => d.docket_id).filter(d => d))].sort();
+const uniqueAgencies = [...new Set(comments.map(d => d.gov_agency).filter(d => d))].sort();
+const uniqueAgencyTypes = [...new Set(comments.map(d => d.gov_agency_type).filter(d => d))].sort();
+const uniqueCountries = [...new Set(comments.map(d => d.country).filter(d => d))].sort();
+const uniqueDocuments = [...new Set(comments.map(d => d.document_title).filter(d => d))].sort();
 
-// Function to update filters
-function updateFilter(type, value) {
-  const set = filterState[type];
-  if (set.has(value)) {
-    set.delete(value);
-  } else {
-    set.add(value);
-  }
-  // Trigger re-computation by updating a reactive cell
-  filterTrigger.value = Date.now();
-}
+// Create attachment count options
+const attachmentOptions = [
+  { value: "0", label: "No attachments" },
+  { value: "1", label: "1 attachment" },
+  { value: "2", label: "2 attachments" },
+  { value: "3+", label: "3+ attachments" },
+  { value: "any", label: "Has attachments (1+)" }
+];
 
-// Create a reactive trigger for filter updates
-const filterTrigger = Inputs.input(0);
-const filterUpdate = Generators.input(filterTrigger);
+// Create filter controls
+const docketSelect = Inputs.select(uniqueDockets, {
+  label: "Filter by Docket ID:",
+  value: undefined,
+  multiple: true,
+  format: d => `${d} (${comments.filter(c => c.docket_id === d).length})`
+});
 
-// Function to get active filters display
-function getActiveFiltersDisplay() {
-  const filters = [];
-  if (filterState.selectedDocuments.size > 0) {
-    filters.push(`Documents: ${Array.from(filterState.selectedDocuments).join(', ')}`);
-  }
-  if (filterState.selectedAgencies.size > 0) {
-    filters.push(`Agencies: ${Array.from(filterState.selectedAgencies).join(', ')}`);
-  }
-  if (filterState.selectedAgencyTypes.size > 0) {
-    filters.push(`Agency Types: ${Array.from(filterState.selectedAgencyTypes).join(', ')}`);
-  }
-  if (filterState.selectedCountries.size > 0) {
-    filters.push(`Countries: ${Array.from(filterState.selectedCountries).join(', ')}`);
-  }
-  return filters.length > 0 ? filters.join(' | ') : 'No filters applied';
-}
+const agencySelect = Inputs.select(uniqueAgencies, {
+  label: "Filter by Agency:", 
+  value: undefined,
+  multiple: true,
+  format: d => `${d} (${comments.filter(c => c.gov_agency === d).length})`
+});
 
-// Function to clear all filters
-function clearAllFilters() {
-  filterState.selectedDocuments.clear();
-  filterState.selectedAgencies.clear();
-  filterState.selectedAgencyTypes.clear();
-  filterState.selectedCountries.clear();
-  filterTrigger.value = Date.now();
-}
+const agencyTypeSelect = Inputs.select(uniqueAgencyTypes, {
+  label: "Filter by Agency Type:",
+  value: undefined,
+  multiple: true,
+  format: d => `${d} (${comments.filter(c => c.gov_agency_type === d).length})`
+});
+
+const countrySelect = Inputs.select(uniqueCountries, {
+  label: "Filter by Country:",
+  value: undefined,
+  multiple: true,
+  format: d => `${d} (${comments.filter(c => c.country === d).length})`
+});
+
+const documentSelect = Inputs.select(uniqueDocuments, {
+  label: "Filter by Document:",
+  value: undefined,
+  multiple: true,
+  format: d => `${d.length > 40 ? d.substring(0, 40) + '...' : d} (${comments.filter(c => c.document_title === d).length})`
+});
+
+const attachmentSelect = Inputs.select(attachmentOptions.map(opt => opt.value), {
+  label: "Filter by Attachment Count:",
+  value: undefined,
+  multiple: true,
+  format: (value) => {
+    const option = attachmentOptions.find(opt => opt.value === value);
+    const count = value === "0" ? comments.filter(c => (c.attachment_count || 0) === 0).length :
+                  value === "1" ? comments.filter(c => (c.attachment_count || 0) === 1).length :
+                  value === "2" ? comments.filter(c => (c.attachment_count || 0) === 2).length :
+                  value === "3+" ? comments.filter(c => (c.attachment_count || 0) >= 3).length :
+                  value === "any" ? comments.filter(c => (c.attachment_count || 0) > 0).length : 0;
+    return `${option.label} (${count})`;
+  }
+});
+
+// Get filter values
+const selectedDockets = Generators.input(docketSelect);
+const selectedAgencies = Generators.input(agencySelect);
+const selectedAgencyTypes = Generators.input(agencyTypeSelect);
+const selectedCountries = Generators.input(countrySelect);
+const selectedDocuments = Generators.input(documentSelect);
+const selectedAttachments = Generators.input(attachmentSelect);
+
+// Clear all filters button
+const clearFiltersButton = Inputs.button("Clear All Filters", {
+  reduce: () => {
+    docketSelect.value = undefined;
+    agencySelect.value = undefined;
+    agencyTypeSelect.value = undefined;
+    countrySelect.value = undefined;
+    documentSelect.value = undefined;
+    attachmentSelect.value = undefined;
+    docketSelect.dispatchEvent(new Event('input'));
+    agencySelect.dispatchEvent(new Event('input'));
+    agencyTypeSelect.dispatchEvent(new Event('input'));
+    countrySelect.dispatchEvent(new Event('input'));
+    documentSelect.dispatchEvent(new Event('input'));
+    attachmentSelect.dispatchEvent(new Event('input'));
+  }
+});
 ```
 
 <div style="margin-bottom: 1rem;">
   ${searchInput}
 </div>
 
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
+  <div>${docketSelect}</div>
+  <div>${agencySelect}</div>
+  <div>${agencyTypeSelect}</div>
+  <div>${countrySelect}</div>
+  <div>${documentSelect}</div>
+  <div>${attachmentSelect}</div>
+  <div style="grid-column: 1 / -1; text-align: center;">${clearFiltersButton}</div>
+</div>
+
+<div style="margin-bottom: 1rem; font-size: 0.9em; color: #666;">
+  <strong>Active Filters:</strong> 
+  ${selectedDockets && selectedDockets.length > 0 ? `Dockets: ${selectedDockets.join(', ')} | ` : ''}
+  ${selectedAgencies && selectedAgencies.length > 0 ? `Agencies: ${selectedAgencies.join(', ')} | ` : ''}
+  ${selectedAgencyTypes && selectedAgencyTypes.length > 0 ? `Agency Types: ${selectedAgencyTypes.join(', ')} | ` : ''}
+  ${selectedCountries && selectedCountries.length > 0 ? `Countries: ${selectedCountries.join(', ')} | ` : ''}
+  ${selectedDocuments && selectedDocuments.length > 0 ? `Documents: ${selectedDocuments.map(d => d.length > 30 ? d.substring(0, 30) + '...' : d).join(', ')} | ` : ''}
+  ${selectedAttachments && selectedAttachments.length > 0 ? `Attachments: ${selectedAttachments.map(a => attachmentOptions.find(opt => opt.value === a)?.label || a).join(', ')} | ` : ''}
+  ${(!selectedDockets || selectedDockets.length === 0) && (!selectedAgencies || selectedAgencies.length === 0) && (!selectedAgencyTypes || selectedAgencyTypes.length === 0) && (!selectedCountries || selectedCountries.length === 0) && (!selectedDocuments || selectedDocuments.length === 0) && (!selectedAttachments || selectedAttachments.length === 0) ? 'No filters applied' : ''}
+</div>
+
 ```js
-// Apply single filtering across all data based on search term
-const filteredComments = searchTerm ? 
-  comments.filter(d => 
+// Apply comprehensive filtering based on search term and selected filters
+const filteredComments = comments.filter(d => {
+  // Search term filtering
+  const matchesSearch = !searchTerm || 
     (d.document_title && d.document_title.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (d.document_type && d.document_type.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (d.docket_id && d.docket_id.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (d.gov_agency_type && d.gov_agency_type.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (d.gov_agency && d.gov_agency.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (d.country && d.country.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (d.comment_text && d.comment_text.toLowerCase().includes(searchTerm.toLowerCase()))
-  ) : comments;
+    (d.comment_text && d.comment_text.toLowerCase().includes(searchTerm.toLowerCase()));
+  
+  // Filter-based filtering
+  const matchesFilters = (
+    (!selectedDockets || selectedDockets.length === 0 || selectedDockets.includes(d.docket_id)) &&
+    (!selectedAgencies || selectedAgencies.length === 0 || selectedAgencies.includes(d.gov_agency)) &&
+    (!selectedAgencyTypes || selectedAgencyTypes.length === 0 || selectedAgencyTypes.includes(d.gov_agency_type)) &&
+    (!selectedCountries || selectedCountries.length === 0 || selectedCountries.includes(d.country)) &&
+    (!selectedDocuments || selectedDocuments.length === 0 || selectedDocuments.includes(d.document_title)) &&
+    (!selectedAttachments || selectedAttachments.length === 0 || selectedAttachments.some(filter => {
+      const attachmentCount = d.attachment_count || 0;
+      return filter === "0" && attachmentCount === 0 ||
+             filter === "1" && attachmentCount === 1 ||
+             filter === "2" && attachmentCount === 2 ||
+             filter === "3+" && attachmentCount >= 3 ||
+             filter === "any" && attachmentCount > 0;
+    }))
+  );
+  
+  return matchesSearch && matchesFilters;
+});
 ```
 
 ```js
